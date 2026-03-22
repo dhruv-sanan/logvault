@@ -70,27 +70,35 @@ export async function GET(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filterClauses: any[] = [];
 
-    // Full-text search on message (analyzed text field)
+    // Full-text search on message using prefix matching.
+    // `match_phrase_prefix` treats the input as a phrase prefix — "fail" matches
+    // "failed", "failure", etc. This is the standard ES pattern for search-as-you-type.
+    // Plain `match` only matches complete tokens, so "fail" would NOT match "failed".
     if (message) {
       mustClauses.push({
-        match: {
+        match_phrase_prefix: {
           message: {
             query: message,
-            operator: "and", // all words must appear, not just any one
+            max_expansions: 50, // max number of prefix variants to try
           },
         },
       });
     }
 
-    // Regex search on message.keyword (the full, unanalyzed string)
-    // We cannot use regex on the `message` text field because it's tokenized
-    // into individual words. `message.keyword` stores the original string intact,
-    // so patterns like "Failed.*DB" or "connect(ion)?" work correctly.
+    // Regex search on message.keyword (the full, unanalyzed string).
+    // ES regexp must match the ENTIRE field value — "fail" only matches a
+    // message that is exactly "fail". We auto-wrap with .* so that partial
+    // patterns work as expected: "fail" → ".*fail.*" matches any message
+    // containing "fail". Users who already wrap (e.g. ".*fail.*") are unaffected.
     if (regex) {
+      const anchored =
+        (regex.startsWith(".*") ? "" : ".*") +
+        regex +
+        (regex.endsWith(".*") ? "" : ".*");
       mustClauses.push({
         regexp: {
           "message.keyword": {
-            value: regex,
+            value: anchored,
             flags: "ALL",
             case_insensitive: true,
           },
@@ -156,6 +164,13 @@ export async function GET(request: NextRequest) {
       total,
       page,
       pageSize,
+      esQuery: {
+        index: INDEX_NAME,
+        from: (page - 1) * pageSize,
+        size: pageSize,
+        query,
+        sort: [{ timestamp: { order: "desc" } }],
+      },
     };
 
     return NextResponse.json(result);

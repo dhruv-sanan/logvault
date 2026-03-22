@@ -1,14 +1,15 @@
 import { Client } from "@elastic/elasticsearch";
 
-// Singleton ES client — created once and reused across requests
+// Singleton ES client — created once and reused across requests.
+// API key auth is optional: Elastic Cloud requires it, local Docker ES does not.
 const client = new Client({
   node: process.env.ELASTICSEARCH_URL!,
-  auth: {
-    apiKey: process.env.ELASTICSEARCH_API_KEY!,
-  },
+  ...(process.env.ELASTICSEARCH_API_KEY
+    ? { auth: { apiKey: process.env.ELASTICSEARCH_API_KEY } }
+    : {}),
 });
 
-export const INDEX_NAME = "logs";
+export const INDEX_NAME = process.env.ELASTICSEARCH_INDEX ?? "logs";
 
 /**
  * Creates the logs index with explicit field mappings if it doesn't already exist.
@@ -49,9 +50,9 @@ export async function ensureIndex(): Promise<void> {
       },
     },
     settings: {
-      // Serverless ES requires refresh_interval >= 5s or -1 (disable auto-refresh).
-      // "5s" means new logs are searchable within 5 seconds of ingestion.
-      refresh_interval: "5s",
+      // Elastic Cloud Serverless requires refresh_interval >= 5s.
+      // Local ES allows "1s". We use an env flag to distinguish.
+      refresh_interval: process.env.ELASTICSEARCH_API_KEY ? "5s" : "1s",
     },
   });
 }

@@ -31,4 +31,6 @@ export interface LogQueryResult {
   total: number;
   page: number;
   pageSize: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  esQuery?: any; // included for demo/interview purposes — shows the raw ES query
 }
